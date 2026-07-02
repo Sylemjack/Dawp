@@ -139,6 +139,8 @@ def user_public(doc: dict) -> dict:
         "id": doc["_id"],
         "email": doc.get("email"),
         "name": doc.get("name"),
+        "username": doc.get("username"),
+        "username_changed_at": doc.get("username_changed_at"),
         "bio": doc.get("bio"),
         "country": doc.get("country"),
         "avatar_url": doc.get("avatar_url"),
@@ -169,6 +171,7 @@ def user_card(doc: dict) -> dict:
     return {
         "id": doc["_id"],
         "name": doc.get("name"),
+        "username": doc.get("username"),
         "avatar_url": doc.get("avatar_url"),
         "country": doc.get("country"),
         "native_language": doc.get("native_language"),

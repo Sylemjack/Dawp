@@ -38,8 +38,22 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     await ensure_indexes()
     await seed_admin()
+    await backfill_usernames()
     yield
     client.close()
+
+
+async def backfill_usernames():
+    """Assign auto usernames to existing users missing one (idempotent)."""
+    from db import users_col
+    from routes.auth import generate_username
+
+    async for doc in users_col.find({"username": {"$exists": False}}):
+        uname = await generate_username(doc.get("name"))
+        await users_col.update_one(
+            {"_id": doc["_id"]},
+            {"$set": {"username": uname, "username_changed_at": None}},
+        )
 
 
 async def seed_admin():
@@ -114,6 +128,12 @@ async def websocket_endpoint(websocket: WebSocket, token: str):
             if event_type in RELAY_EVENT_TYPES and target:
                 data["from"] = user_id
                 if event_type == "call_offer":
+                    if not manager.is_online(target):
+                        await manager.send_to_user(
+                            user_id,
+                            {"type": "call_unavailable", "from": target},
+                        )
+                        continue
                     from db import users_col
 
                     caller = await users_col.find_one({"_id": user_id})

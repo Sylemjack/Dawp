@@ -42,7 +42,14 @@
         }
       ],
       "expo-font",
-      "expo-audio"
+      "expo-audio",
+      [
+        "@config-plugins/react-native-webrtc",
+        {
+          "cameraPermission": "Make video calls with language partners",
+          "microphonePermission": "Talk in audio calls and voice rooms"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

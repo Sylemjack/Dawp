@@ -357,6 +357,8 @@ const makeStyles = (colors: ThemeColors) =>
     backgroundColor: colors.surfaceSecondary,
   },
   header: {
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: spacing.xl,
     paddingTop: spacing.md,
   },
@@ -381,6 +383,20 @@ const makeStyles = (colors: ThemeColors) =>
     borderRadius: radius.pill,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
+  },
+  searchIconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.brandTertiary,
+    alignItems: "center",
+    justifyContent: "center",
+    marginLeft: spacing.sm,
+  },
+  searchPlaceholder: {
+    fontFamily: fonts.text,
+    fontSize: 14,
+    color: colors.onSurfaceSecondary,
   },
   searchInput: {
     flex: 1,

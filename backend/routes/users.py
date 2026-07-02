@@ -1,8 +1,10 @@
 import base64
+import re
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 
 from auth_utils import CurrentUser
 from db import follows_col, media_col, profile_visits_col, users_col
@@ -248,6 +250,45 @@ async def list_partners(
         card["is_online"] = d["_id"] in online_ids
         cards.append(apply_privacy(card, d))
     return cards
+
+
+USERNAME_RE = re.compile(r"^[a-z0-9_.]{3,20}$")
+
+
+class UsernameUpdate(BaseModel):
+    username: str
+
+
+@router.put("/me/username")
+async def change_username(body: UsernameUpdate, current_user: CurrentUser):
+    """Unique username — changeable only once per month."""
+    uname = body.username.strip().lower()
+    if not USERNAME_RE.match(uname):
+        raise HTTPException(
+            status_code=400,
+            detail="Username must be 3-20 characters: lowercase letters, numbers, _ or .",
+        )
+    if uname == current_user.get("username"):
+        return user_public(current_user)
+    last = current_user.get("username_changed_at")
+    if last:
+        last_dt = datetime.fromisoformat(last)
+        elapsed = datetime.now(timezone.utc) - last_dt
+        if elapsed < timedelta(days=30):
+            days_left = 30 - elapsed.days
+            raise HTTPException(
+                status_code=429,
+                detail=f"You can change your username once a month. Try again in {days_left} day(s).",
+            )
+    if await users_col.find_one({"username": uname}):
+        raise HTTPException(status_code=409, detail="This username is already taken.")
+    updates = {
+        "username": uname,
+        "username_changed_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await users_col.update_one({"_id": current_user["_id"]}, {"$set": updates})
+    current_user.update(updates)
+    return user_public(current_user)
 
 
 @router.post("/{user_id}/hide-moments")

@@ -1,3 +1,5 @@
+import random
+import re
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -27,6 +29,16 @@ async def touch_streak(doc: dict) -> dict:
     return doc
 
 
+async def generate_username(name: str | None) -> str:
+    """Unique auto-assigned username: lowercase name + random digits."""
+    base = re.sub(r"[^a-z0-9]", "", (name or "user").lower())[:12] or "user"
+    for _ in range(20):
+        candidate = f"{base}{random.randint(100, 9999)}"
+        if not await users_col.find_one({"username": candidate}):
+            return candidate
+    return f"user{uuid.uuid4().hex[:8]}"
+
+
 @router.post("/register", status_code=status.HTTP_201_CREATED)
 async def register(body: RegisterRequest):
     user_id = str(uuid.uuid4())
@@ -35,6 +47,8 @@ async def register(body: RegisterRequest):
         "email": body.email.lower(),
         "password_hash": hash_password(body.password),
         "name": body.name.strip(),
+        "username": await generate_username(body.name),
+        "username_changed_at": None,
         "bio": None,
         "country": None,
         "avatar_url": None,

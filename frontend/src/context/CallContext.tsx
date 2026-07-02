@@ -91,14 +91,52 @@ interface CallContextValue {
 const CallContext = createContext<CallContextValue | undefined>(undefined);
 
 const RTC_CONFIG = {
-  iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+  iceServers: [
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun1.l.google.com:19302" },
+  ],
 };
 
-const webrtcAvailable = () =>
-  Platform.OS === "web" &&
-  typeof navigator !== "undefined" &&
-  !!navigator.mediaDevices &&
-  typeof (window as any).RTCPeerConnection === "function";
+// Native WebRTC (react-native-webrtc) — available in production/dev builds,
+// gracefully absent in Expo Go.
+let NativeWebRTC: any = null;
+if (Platform.OS !== "web") {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    NativeWebRTC = require("react-native-webrtc");
+  } catch {
+    NativeWebRTC = null;
+  }
+}
+
+const getRTC = (): { PC: any; mediaDevices: any; native: boolean } | null => {
+  if (Platform.OS === "web") {
+    if (
+      typeof navigator !== "undefined" &&
+      !!navigator.mediaDevices &&
+      typeof (window as any).RTCPeerConnection === "function"
+    ) {
+      return {
+        PC: (window as any).RTCPeerConnection,
+        mediaDevices: navigator.mediaDevices,
+        native: false,
+      };
+    }
+    return null;
+  }
+  if (NativeWebRTC?.RTCPeerConnection && NativeWebRTC?.mediaDevices) {
+    return {
+      PC: NativeWebRTC.RTCPeerConnection,
+      mediaDevices: NativeWebRTC.mediaDevices,
+      native: true,
+    };
+  }
+  return null;
+};
+
+const webrtcAvailable = () => !!getRTC();
+
+const RING_TIMEOUT_MS = 45000;
 
 export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
@@ -111,6 +149,8 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
   const localStreamRef = useRef<any>(null);
   const remoteAudioRef = useRef<any>(null);
   const callRef = useRef<CallState | null>(null);
+  const pendingIceRef = useRef<any[]>([]);
+  const ringTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [call, setCallState] = useState<CallState | null>(null);
   const [muted, setMuted] = useState(false);
   const [seconds, setSeconds] = useState(0);
@@ -135,6 +175,11 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
   }, []);
 
   const cleanupMedia = () => {
+    if (ringTimeoutRef.current) {
+      clearTimeout(ringTimeoutRef.current);
+      ringTimeoutRef.current = null;
+    }
+    pendingIceRef.current = [];
     pcRef.current?.close?.();
     pcRef.current = null;
     localStreamRef.current?.getTracks?.().forEach((t: any) => t.stop());
@@ -147,12 +192,26 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
     setSeconds(0);
   };
 
+  /** Apply buffered ICE candidates once the remote description is set. */
+  const flushIce = async () => {
+    const pc = pcRef.current;
+    if (!pc || !pc.remoteDescription) return;
+    const queued = pendingIceRef.current.splice(0);
+    for (const candidate of queued) {
+      try {
+        await pc.addIceCandidate(candidate);
+      } catch {
+        // stale candidate; ignore
+      }
+    }
+  };
+
   const createPeer = async (peerId: string) => {
-    const stream = await (navigator as any).mediaDevices.getUserMedia({
-      audio: true,
-    });
+    const rtc = getRTC();
+    if (!rtc) throw new Error("webrtc-unavailable");
+    const stream = await rtc.mediaDevices.getUserMedia({ audio: true });
     localStreamRef.current = stream;
-    const pc = new (window as any).RTCPeerConnection(RTC_CONFIG);
+    const pc = new rtc.PC(RTC_CONFIG);
     stream.getTracks().forEach((t: any) => pc.addTrack(t, stream));
     pc.onicecandidate = (e: any) => {
       if (e.candidate) {
@@ -160,10 +219,15 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
       }
     };
     pc.ontrack = (e: any) => {
-      const audio = document.createElement("audio");
-      audio.autoplay = true;
-      audio.srcObject = e.streams[0];
-      remoteAudioRef.current = audio;
+      if (rtc.native) {
+        // react-native-webrtc plays remote audio tracks automatically.
+        remoteAudioRef.current = e.streams?.[0] || null;
+      } else {
+        const audio = document.createElement("audio");
+        audio.autoplay = true;
+        audio.srcObject = e.streams[0];
+        remoteAudioRef.current = audio;
+      }
     };
     pcRef.current = pc;
     return pc;
@@ -175,7 +239,9 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
       if (!webrtcAvailable()) {
         Alert.alert(
           "Audio calls",
-          "Audio calling works in the web app or a development build. Voice messages work everywhere!",
+          Platform.OS === "web"
+            ? "Your browser doesn't support audio calls."
+            : "Audio calls work in the installed app (production build) or on the web. Voice messages work everywhere!",
         );
         return;
       }
@@ -185,10 +251,21 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
         sendSignal({ type: "call_offer", to: peer.id, sdp: offer });
+        ringTimeoutRef.current = setTimeout(() => {
+          if (callRef.current?.status === "outgoing") {
+            sendSignal({ type: "call_end", to: peer.id });
+            cleanupMedia();
+            setCall(null);
+            Alert.alert("No answer", `${peer.name} didn't pick up. Try again later!`);
+          }
+        }, RING_TIMEOUT_MS);
       } catch {
         cleanupMedia();
         setCall(null);
-        Alert.alert("Call failed", "Could not access the microphone.");
+        Alert.alert(
+          "Call failed",
+          "Could not access the microphone. Please allow microphone access and try again.",
+        );
       }
     },
     [sendSignal],
@@ -202,7 +279,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
       setCall(null);
       Alert.alert(
         "Audio calls",
-        "Audio calling works in the web app or a development build.",
+        "Audio calls work in the installed app (production build) or on the web.",
       );
       return;
     }
@@ -211,6 +288,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
       await pc.setRemoteDescription(current.offerSdp);
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
+      await flushIce();
       sendSignal({ type: "call_answer", to: current.peer.id, sdp: answer });
       setCall({ ...current, status: "active" });
     } catch {
@@ -262,7 +340,12 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
       case "call_answer":
         if (current?.status === "outgoing" && pcRef.current) {
           try {
+            if (ringTimeoutRef.current) {
+              clearTimeout(ringTimeoutRef.current);
+              ringTimeoutRef.current = null;
+            }
             await pcRef.current.setRemoteDescription(event.sdp);
+            await flushIce();
             setCall({ ...current, status: "active" });
           } catch {
             endCall();
@@ -270,12 +353,16 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
         }
         break;
       case "call_ice":
-        if (pcRef.current && event.candidate) {
-          try {
-            await pcRef.current.addIceCandidate(event.candidate);
-          } catch {
-            // stale candidate; ignore
-          }
+        if (event.candidate) {
+          pendingIceRef.current.push(event.candidate);
+          await flushIce();
+        }
+        break;
+      case "call_unavailable":
+        if (current?.status === "outgoing") {
+          cleanupMedia();
+          setCall(null);
+          Alert.alert("Offline", `${current.peer.name} is offline right now.`);
         }
         break;
       case "call_decline":

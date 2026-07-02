@@ -28,6 +28,7 @@ market_config_col = db["market_config"]
 
 async def ensure_indexes():
     await users_col.create_index("email", unique=True)
+    await users_col.create_index("username", unique=True, sparse=True)
     await messages_col.create_index([("conversation_id", 1), ("created_at", 1)])
     await conversations_col.create_index("participant_ids")
     await moments_col.create_index([("created_at", -1)])
