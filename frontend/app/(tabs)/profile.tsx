@@ -426,6 +426,26 @@ export default function Profile() {
           </Pressable>
         </View>
         <View style={styles.section}>
+          <Pressable
+            testID="collapse-about"
+            style={styles.collapseHeader}
+            onPress={() => toggleSection("about")}
+          >
+            <View
+              style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}
+            >
+              <Ionicons name="person" size={15} color={colors.brand} />
+              <Text style={styles.sectionTitle}>About</Text>
+            </View>
+            <Ionicons
+              name={expanded === "about" || editing ? "chevron-up" : "chevron-down"}
+              size={16}
+              color={colors.onSurfaceSecondary}
+            />
+          </Pressable>
+          {(expanded === "about" || editing) && (
+            <View style={{ gap: spacing.xl }}>
+        <View>
           <Text style={styles.sectionTitle}>About me</Text>
           {editing ? (
             <TextInput
@@ -444,7 +464,7 @@ export default function Profile() {
           )}
         </View>
 
-        <View style={styles.section}>
+        <View>
           <Text style={styles.sectionTitle}>Country</Text>
           {editing && !user.country ? (
             <TextInput
@@ -469,7 +489,7 @@ export default function Profile() {
           )}
         </View>
 
-        <View style={styles.section}>
+        <View>
           <Text style={styles.sectionTitle}>Age</Text>
           {editing && !user.age ? (
             <TextInput
@@ -498,7 +518,7 @@ export default function Profile() {
           )}
         </View>
 
-        <View style={styles.section}>
+        <View>
           <Text style={styles.sectionTitle}>Gender</Text>
           {editing && !user.gender ? (
             <View style={styles.chipWrap}>
@@ -545,7 +565,7 @@ export default function Profile() {
           )}
         </View>
 
-        <View style={styles.section}>
+        <View>
           <Text style={styles.sectionTitle}>
             Interests{editing ? ` (${interests.length}/${MAX_INTERESTS})` : ""}
           </Text>
@@ -583,6 +603,9 @@ export default function Profile() {
             <Text style={styles.bodyText}>
               No interests yet. Tap Edit to add some!
             </Text>
+          )}
+        </View>
+            </View>
           )}
         </View>
 

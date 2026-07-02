@@ -68,6 +68,7 @@ export interface User {
   privacy?: Record<string, boolean>;
   hidden_moment_users?: string[];
   blocked_users?: string[];
+  in_voice_room?: { room_id: string; name?: string } | null;
   is_online?: boolean;
   followers_count?: number;
   following_count?: number;

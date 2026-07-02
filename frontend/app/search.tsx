@@ -5,7 +5,6 @@ import {
   ActivityIndicator,
   FlatList,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -15,32 +14,46 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { Avatar } from "@/src/components/Avatar";
 import { GenderBadge, VipBadge } from "@/src/components/Badges";
-import { FlagIcon } from "@/src/components/FlagIcon";
 import { LanguagePair } from "@/src/components/LanguagePair";
 import { countryToCode } from "@/src/constants/countries";
-import { LANGUAGES } from "@/src/constants/languages";
 import { useTheme } from "@/src/context/ThemeContext";
 import { fonts, radius, shadow, spacing, ThemeColors } from "@/src/theme";
 import { api, User } from "@/src/utils/api";
+
+const AGE_PRESETS: { key: string; label: string; min: number | null; max: number | null }[] = [
+  { key: "any", label: "Any age", min: null, max: null },
+  { key: "18-25", label: "18–25", min: 18, max: 25 },
+  { key: "26-35", label: "26–35", min: 26, max: 35 },
+  { key: "36+", label: "36+", min: 36, max: null },
+];
 
 export default function Search() {
   const router = useRouter();
   const { colors } = useTheme();
   const styles = React.useMemo(() => makeStyles(colors), [colors]);
   const [query, setQuery] = useState("");
-  const [native, setNative] = useState<string | null>(null);
-  const [learning, setLearning] = useState<string | null>(null);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [agePreset, setAgePreset] = useState("any");
+  const [location, setLocation] = useState("");
   const [gender, setGender] = useState<"male" | "female" | null>(null);
   const [onlineOnly, setOnlineOnly] = useState(false);
   const [results, setResults] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const activeFilters =
+    (agePreset !== "any" ? 1 : 0) +
+    (location.trim() ? 1 : 0) +
+    (gender ? 1 : 0) +
+    (onlineOnly ? 1 : 0);
+
   const load = useCallback(async () => {
     try {
       const params = new URLSearchParams();
       if (query.trim()) params.set("search", query.trim());
-      if (native) params.set("native", native);
-      if (learning) params.set("learning", learning);
+      const preset = AGE_PRESETS.find((p) => p.key === agePreset);
+      if (preset?.min != null) params.set("min_age", String(preset.min));
+      if (preset?.max != null) params.set("max_age", String(preset.max));
+      if (location.trim()) params.set("location", location.trim());
       if (gender) params.set("gender", gender);
       if (onlineOnly) params.set("online_only", "true");
       if (!params.toString()) params.set("language", "all");
@@ -51,50 +64,12 @@ export default function Search() {
     } finally {
       setLoading(false);
     }
-  }, [query, native, learning, gender, onlineOnly]);
+  }, [query, agePreset, location, gender, onlineOnly]);
 
   useEffect(() => {
-    const t = setTimeout(load, query ? 350 : 0);
+    const t = setTimeout(load, query || location ? 350 : 0);
     return () => clearTimeout(t);
-  }, [load, query]);
-
-  const langChips = (
-    selected: string | null,
-    onSelect: (c: string | null) => void,
-    prefix: string,
-  ) => (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.chipRow}
-    >
-      <Pressable
-        testID={`${prefix}-any`}
-        onPress={() => onSelect(null)}
-        style={[styles.chip, !selected && styles.chipActive]}
-      >
-        <Text style={[styles.chipText, !selected && styles.chipTextActive]}>
-          Any
-        </Text>
-      </Pressable>
-      {LANGUAGES.map((l) => {
-        const active = selected === l.code;
-        return (
-          <Pressable
-            key={l.code}
-            testID={`${prefix}-${l.code}`}
-            onPress={() => onSelect(active ? null : l.code)}
-            style={[styles.chip, active && styles.chipActive]}
-          >
-            <FlagIcon code={l.code} size={13} />
-            <Text style={[styles.chipText, active && styles.chipTextActive]}>
-              {l.name}
-            </Text>
-          </Pressable>
-        );
-      })}
-    </ScrollView>
-  );
+  }, [load, query, location]);
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]} testID="search-screen">
@@ -131,46 +106,116 @@ export default function Search() {
             </Pressable>
           )}
         </View>
-      </View>
-
-      <Text style={styles.filterLabel}>Native language</Text>
-      {langChips(native, setNative, "search-native")}
-      <Text style={styles.filterLabel}>Learning language</Text>
-      {langChips(learning, setLearning, "search-learning")}
-      <View style={styles.togglesRow}>
-        {(["male", "female"] as const).map((g) => (
-          <Pressable
-            key={g}
-            testID={`search-gender-${g}`}
-            onPress={() => setGender(gender === g ? null : g)}
-            style={[styles.chip, gender === g && styles.chipActive]}
-          >
-            <Ionicons
-              name={g}
-              size={13}
-              color={gender === g ? colors.onBrandTertiary : colors.onSurfaceTertiary}
-            />
-            <Text style={[styles.chipText, gender === g && styles.chipTextActive]}>
-              {g === "male" ? "Male" : "Female"}
-            </Text>
-          </Pressable>
-        ))}
         <Pressable
-          testID="search-online-toggle"
-          onPress={() => setOnlineOnly(!onlineOnly)}
-          style={[styles.chip, onlineOnly && styles.chipActive]}
+          testID="search-filter-btn"
+          style={[styles.filterBtn, (filtersOpen || activeFilters > 0) && styles.filterBtnActive]}
+          onPress={() => setFiltersOpen(!filtersOpen)}
         >
-          <View
-            style={[
-              styles.onlineDot,
-              { backgroundColor: onlineOnly ? "#22C55E" : colors.borderStrong },
-            ]}
+          <Ionicons
+            name="options"
+            size={18}
+            color={filtersOpen || activeFilters > 0 ? colors.onBrand : colors.onSurfaceSecondary}
           />
-          <Text style={[styles.chipText, onlineOnly && styles.chipTextActive]}>
-            Online
-          </Text>
+          {activeFilters > 0 && (
+            <View style={styles.filterCount}>
+              <Text style={styles.filterCountText}>{activeFilters}</Text>
+            </View>
+          )}
         </Pressable>
       </View>
+
+      {filtersOpen && (
+        <View style={styles.filterPanel} testID="search-filter-panel">
+          <Text style={styles.filterLabel}>Age</Text>
+          <View style={styles.chipWrap}>
+            {AGE_PRESETS.map((p) => (
+              <Pressable
+                key={p.key}
+                testID={`search-age-${p.key}`}
+                onPress={() => setAgePreset(p.key)}
+                style={[styles.chip, agePreset === p.key && styles.chipActive]}
+              >
+                <Text
+                  style={[styles.chipText, agePreset === p.key && styles.chipTextActive]}
+                >
+                  {p.label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+          <Text style={styles.filterLabel}>Location</Text>
+          <View style={styles.locationBox}>
+            <Ionicons name="location" size={15} color={colors.onSurfaceSecondary} />
+            <TextInput
+              testID="search-location-input"
+              style={styles.searchInput}
+              placeholder="Country or city..."
+              placeholderTextColor={colors.onSurfaceSecondary}
+              value={location}
+              onChangeText={setLocation}
+            />
+            {location.length > 0 && (
+              <Pressable onPress={() => setLocation("")} hitSlop={6}>
+                <Ionicons
+                  name="close-circle"
+                  size={15}
+                  color={colors.onSurfaceSecondary}
+                />
+              </Pressable>
+            )}
+          </View>
+          <Text style={styles.filterLabel}>More</Text>
+          <View style={styles.chipWrap}>
+            {(["male", "female"] as const).map((g) => (
+              <Pressable
+                key={g}
+                testID={`search-gender-${g}`}
+                onPress={() => setGender(gender === g ? null : g)}
+                style={[styles.chip, gender === g && styles.chipActive]}
+              >
+                <Ionicons
+                  name={g}
+                  size={13}
+                  color={gender === g ? colors.onBrandTertiary : colors.onSurfaceTertiary}
+                />
+                <Text style={[styles.chipText, gender === g && styles.chipTextActive]}>
+                  {g === "male" ? "Male" : "Female"}
+                </Text>
+              </Pressable>
+            ))}
+            <Pressable
+              testID="search-online-toggle"
+              onPress={() => setOnlineOnly(!onlineOnly)}
+              style={[styles.chip, onlineOnly && styles.chipActive]}
+            >
+              <View
+                style={[
+                  styles.onlineDot,
+                  { backgroundColor: onlineOnly ? "#22C55E" : colors.borderStrong },
+                ]}
+              />
+              <Text style={[styles.chipText, onlineOnly && styles.chipTextActive]}>
+                Online
+              </Text>
+            </Pressable>
+            {activeFilters > 0 && (
+              <Pressable
+                testID="search-filters-reset"
+                onPress={() => {
+                  setAgePreset("any");
+                  setLocation("");
+                  setGender(null);
+                  setOnlineOnly(false);
+                }}
+                style={styles.chip}
+              >
+                <Ionicons name="refresh" size={13} color={colors.error} />
+                <Text style={[styles.chipText, { color: colors.error }]}>Reset</Text>
+              </Pressable>
+            )}
+          </View>
+        </View>
+      )}
 
       {loading ? (
         <View style={styles.center}>
@@ -274,26 +319,60 @@ const makeStyles = (colors: ThemeColors) =>
       color: colors.onSurface,
       paddingVertical: 2,
     },
+    filterBtn: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: colors.surface,
+      alignItems: "center",
+      justifyContent: "center",
+      ...shadow.card,
+    },
+    filterBtnActive: { backgroundColor: colors.brand },
+    filterCount: {
+      position: "absolute",
+      top: -3,
+      right: -3,
+      minWidth: 16,
+      height: 16,
+      borderRadius: 8,
+      backgroundColor: colors.error,
+      alignItems: "center",
+      justifyContent: "center",
+      paddingHorizontal: 3,
+    },
+    filterCountText: { color: "#FFF", fontSize: 9, fontFamily: fonts.textBold },
+    filterPanel: {
+      backgroundColor: colors.surface,
+      borderRadius: radius.md,
+      marginHorizontal: spacing.lg,
+      marginTop: spacing.xs,
+      padding: spacing.lg,
+      gap: spacing.xs,
+      ...shadow.card,
+    },
+    locationBox: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing.sm,
+      backgroundColor: colors.surfaceSecondary,
+      borderRadius: radius.sm,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+    },
+    chipWrap: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: spacing.sm,
+    },
     filterLabel: {
       fontFamily: fonts.textBold,
       fontSize: 11,
       color: colors.onSurfaceSecondary,
       textTransform: "uppercase",
       letterSpacing: 0.5,
-      paddingHorizontal: spacing.lg,
       marginTop: spacing.sm,
       marginBottom: spacing.xs,
-    },
-    chipRow: {
-      gap: spacing.sm,
-      paddingHorizontal: spacing.lg,
-    },
-    togglesRow: {
-      flexDirection: "row",
-      gap: spacing.sm,
-      paddingHorizontal: spacing.lg,
-      marginTop: spacing.md,
-      marginBottom: spacing.sm,
     },
     chip: {
       flexDirection: "row",
@@ -302,8 +381,7 @@ const makeStyles = (colors: ThemeColors) =>
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.sm,
       borderRadius: radius.pill,
-      backgroundColor: colors.surface,
-      ...shadow.card,
+      backgroundColor: colors.surfaceSecondary,
     },
     chipActive: { backgroundColor: colors.brandTertiary },
     chipText: {

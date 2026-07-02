@@ -177,26 +177,34 @@ async def list_partners(
     current_user: CurrentUser,
     language: str | None = None,
     search: str | None = None,
-    native: str | None = None,
-    learning: str | None = None,
+    min_age: int | None = None,
+    max_age: int | None = None,
+    location: str | None = None,
     gender: str | None = None,
     online_only: bool = False,
 ):
     """Partners list. Default: users whose native language matches my learning
     language, or who are learning my native language. `language=all` shows everyone.
-    Explicit search filters (native/learning/gender/online_only) bypass matching."""
+    Explicit search filters (age/location/gender/online_only) bypass matching."""
     query: dict = {
         "_id": {"$ne": current_user["_id"]},
         "native_language": {"$ne": None},
     }
-    explicit = bool(native or learning or gender or search or online_only)
+    explicit = bool(
+        location or gender or search or online_only or min_age is not None or max_age is not None
+    )
     if explicit:
-        if native:
-            query["native_language"] = native
-        if learning:
+        if min_age is not None or max_age is not None:
+            age_q: dict = {}
+            if min_age is not None:
+                age_q["$gte"] = min_age
+            if max_age is not None:
+                age_q["$lte"] = max_age
+            query["age"] = age_q
+        if location:
             query["$or"] = [
-                {"learning_language": learning},
-                {"learning_languages": learning},
+                {"country": {"$regex": location, "$options": "i"}},
+                {"city": {"$regex": location, "$options": "i"}},
             ]
         if gender in ("male", "female"):
             query["gender"] = gender

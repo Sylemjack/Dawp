@@ -12,6 +12,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { Avatar } from "@/src/components/Avatar";
+import { VipBadge } from "@/src/components/Badges";
 import { countryToCode } from "@/src/constants/countries";
 import { useTheme } from "@/src/context/ThemeContext";
 import { useChatSocket } from "@/src/hooks/use-chat-socket";
@@ -94,26 +95,56 @@ export default function Chats() {
               style={styles.row}
               onPress={() => router.push(`/chat/${item.id}`)}
             >
-              <Avatar
-                name={item.partner?.name}
-                url={item.partner?.avatar_url}
-                size={54}
-                flagCode={countryToCode(item.partner?.country)}
-                online={item.partner?.is_online}
-              />
+              <View>
+                <Avatar
+                  name={item.partner?.name}
+                  url={item.partner?.avatar_url}
+                  size={54}
+                  flagCode={countryToCode(item.partner?.country)}
+                  online={item.partner?.is_online}
+                  frame={item.partner?.active_frame}
+                />
+                {item.partner?.in_voice_room ? (
+                  <View
+                    style={styles.roomBadge}
+                    testID={`chat-room-badge-${item.id}`}
+                  >
+                    <Ionicons name="mic" size={10} color="#FFF" />
+                  </View>
+                ) : null}
+              </View>
               <View style={styles.rowBody}>
                 <View style={styles.rowTop}>
-                  <Text style={styles.rowName} numberOfLines={1}>
-                    {item.partner?.name || "Unknown"}
-                  </Text>
+                  <View style={styles.nameWrap}>
+                    <Text style={styles.rowName} numberOfLines={1}>
+                      {item.partner?.name || "Unknown"}
+                    </Text>
+                    {item.partner?.active_badge?.emoji ? (
+                      <Text style={{ fontSize: 12 }}>
+                        {item.partner.active_badge.emoji}
+                      </Text>
+                    ) : null}
+                    {item.partner?.is_vip ? (
+                      <VipBadge small tier={item.partner?.vip_tier} />
+                    ) : null}
+                  </View>
                   <Text style={styles.rowTime}>
                     {timeAgo(item.last_message?.created_at)}
                   </Text>
                 </View>
                 <View style={styles.rowBottom}>
-                  <Text style={styles.rowSnippet} numberOfLines={1}>
-                    {item.last_message?.text || "Say hello 👋"}
-                  </Text>
+                  {item.partner?.in_voice_room ? (
+                    <Text style={styles.roomStatus} numberOfLines={1}>
+                      🎙️ In voice room
+                      {item.partner.in_voice_room.name
+                        ? ` · ${item.partner.in_voice_room.name}`
+                        : ""}
+                    </Text>
+                  ) : (
+                    <Text style={styles.rowSnippet} numberOfLines={1}>
+                      {item.last_message?.text || "Say hello 👋"}
+                    </Text>
+                  )}
                   {item.unread > 0 && (
                     <View style={styles.badge} testID={`chat-unread-${item.id}`}>
                       <Text style={styles.badgeText}>{item.unread}</Text>
@@ -171,6 +202,31 @@ const makeStyles = (colors: ThemeColors) =>
     fontSize: 16,
     color: colors.onSurface,
     flexShrink: 1,
+  },
+  nameWrap: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+  },
+  roomBadge: {
+    position: "absolute",
+    top: -3,
+    left: -3,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: "#8B5CF6",
+    borderWidth: 2,
+    borderColor: colors.surface,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  roomStatus: {
+    flex: 1,
+    fontFamily: fonts.textSemi,
+    fontSize: 13,
+    color: "#8B5CF6",
   },
   rowTime: {
     fontFamily: fonts.text,

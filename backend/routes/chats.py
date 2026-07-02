@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException
 
 from auth_utils import CurrentUser
 from config_utils import get_app_config
-from db import audio_col, conversations_col, follows_col, media_col, messages_col, users_col
+from db import audio_col, conversations_col, follows_col, media_col, messages_col, rooms_col, users_col
 from models import (
     ConversationCreate,
     ImageMessageCreate,
@@ -134,7 +134,18 @@ async def list_conversations(current_user: CurrentUser):
         .sort("updated_at", -1)
         .to_list(100)
     )
-    return [await conversation_public(d, current_user["_id"]) for d in docs]
+    results = [await conversation_public(d, current_user["_id"]) for d in docs]
+    # Attach live voice-room status to partners
+    live_rooms = await rooms_col.find({"is_live": True}).to_list(100)
+    room_map: dict = {}
+    for r in live_rooms:
+        for uid in (r.get("members") or {}).keys():
+            room_map[uid] = {"room_id": r["_id"], "name": r.get("name")}
+    for c in results:
+        p = c.get("partner")
+        if p and p.get("id") in room_map:
+            p["in_voice_room"] = room_map[p["id"]]
+    return results
 
 
 @router.get("/{conversation_id}")

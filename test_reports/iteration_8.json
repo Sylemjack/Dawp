@@ -1,0 +1,33 @@
+{
+  "summary": "Iteration 8 tested end-to-end. Backend: 9/9 new pytest cases pass (test_iteration8_features.py) + iteration 7 regression 20/20 pass. Verified: GET /chats decorates partner with is_vip/vip_tier/active_frame/active_badge and in_voice_room={room_id,name} when partner is in a live room; GET /users/partners supports min_age/max_age/location combined with gender/online_only/search; POST /chats/{id}/mute toggles muted flag and suppresses partner-message unread increment; DELETE /chats/{id}/messages clears messages and resets last_message. Frontend (mobile viewport 390x844): Chats tab shows VIP tag next to 'Mei Lin', purple mic badge on avatar, and '🎙️ In voice room' status line (verified live). Search page filter icon (search-filter-btn) toggles collapsible panel (search-filter-panel); age presets (search-age-any/18-25/26-35/36+) and location input (search-location-input) work; active-filter count badge shows. Profile 'About' card (collapse-about) is collapsed by default (About me/Country hidden), expands on tap to show all 5 fields, and Edit auto-expands. Connect search-bar navigates to /search. No blockers found.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration8_features.py",
+    "/app/backend/tests/test_iteration7_features.py",
+    "/app/test_reports/pytest/iteration8.xml",
+    "/app/test_reports/pytest/iteration7_rerun.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "chats.py list_conversations fetches up to 100 live rooms and iterates member dicts to build room_map — O(rooms*members) which is fine now but consider indexing if rooms grow.",
+    "users.py list_partners: when only min_age or max_age (no other explicit filter) is present, explicit branch is taken and language-based matching is skipped — this matches the search-screen semantics and is correct."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration8_features.py (new — 9 tests)"
+  ],
+  "success_rate": {"backend": "100% (9/9 iteration 8, 20/20 iteration 7)", "frontend": "100% of iteration 8 flows verified"},
+  "seed_data_creation": "Ephemeral users created via /auth/register with prefixes i8_mute_*, i8_clr_*, i8_host_* for chat/mute/clear/voice-room tests. Live voice room created and closed via /rooms/{id}/close after test. No admin config modified.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Frontend env var is EXPO_PUBLIC_BACKEND_URL. For live in_voice_room testing, demo may have already used the free 1-room-per-day quota if testing hits that path — the iteration 8 test falls back to signing up a fresh user to host the room. Landing page requires clicking 'I already have an account' (or navigate directly to /auth?mode=login). Chats tab list uses testID `chat-room-badge-{convId}` for the purple mic pill.",
+  "rca_of_issue": "N/A — all iteration 8 features function correctly."
+}
