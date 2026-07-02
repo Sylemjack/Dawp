@@ -72,7 +72,7 @@ export const Avatar: React.FC<AvatarProps> = ({
 
   if (!flagCode && !online) return content;
 
-  const dotSize = Math.max(10, Math.round(size * 0.26));
+  const dotSize = Math.max(9, Math.round(size * 0.22));
 
   return (
     <View style={[styles.wrap, baseStyle]}>
@@ -83,7 +83,7 @@ export const Avatar: React.FC<AvatarProps> = ({
           source={{ uri: countryFlagUrl(flagCode) }}
           style={{
             position: "absolute",
-            right: -flagBorder,
+            left: -flagBorder,
             bottom: -flagBorder,
             width: flagSize,
             height: flagSize,
@@ -101,12 +101,12 @@ export const Avatar: React.FC<AvatarProps> = ({
           testID={testID ? `${testID}-online` : undefined}
           style={{
             position: "absolute",
-            top: 0,
+            bottom: 0,
             right: 0,
             width: dotSize,
             height: dotSize,
             borderRadius: dotSize / 2,
-            backgroundColor: "#22C55E",
+            backgroundColor: "#0EA5E9",
             borderWidth: flagBorder,
             borderColor: colors.surface,
           }}

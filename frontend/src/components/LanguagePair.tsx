@@ -3,7 +3,6 @@ import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import { FlagIcon } from "@/src/components/FlagIcon";
-import { langName } from "@/src/constants/languages";
 import { useTheme } from "@/src/context/ThemeContext";
 import { fonts, radius, spacing, ThemeColors } from "@/src/theme";
 
@@ -13,6 +12,7 @@ interface LanguagePairProps {
   teach?: (string | null | undefined)[] | null;
   /** One learning language or a list of up to 3. */
   learning?: string | (string | null | undefined)[] | null;
+  /** Compact: small single-line chips with short language codes (EN, ES...). */
   compact?: boolean;
 }
 
@@ -28,28 +28,45 @@ export const LanguagePair: React.FC<LanguagePairProps> = ({
   const learnList = (
     Array.isArray(learning) ? learning : learning ? [learning] : []
   ).filter(Boolean) as string[];
+  const flagSize = compact ? 11 : 14;
 
   return (
-    <View style={styles.row}>
+    <View style={[styles.row, compact && styles.rowCompact]}>
       {teachList.map((code) => (
-        <View key={`t-${code}`} style={[styles.chip, styles.nativeChip]}>
-          <FlagIcon code={code} size={14} />
-          <Text style={styles.chipText}>
-            {compact ? code.toUpperCase() : langName(code)}
+        <View
+          key={`t-${code}`}
+          style={[styles.chip, styles.nativeChip, compact && styles.chipCompact]}
+        >
+          <FlagIcon code={code} size={flagSize} />
+          <Text style={[styles.chipText, compact && styles.chipTextCompact]}>
+            {code.toUpperCase()}
           </Text>
         </View>
       ))}
       <Ionicons
         name="swap-horizontal"
-        size={14}
+        size={compact ? 11 : 14}
         color={colors.onSurfaceSecondary}
-        style={{ marginHorizontal: spacing.xs }}
+        style={{ marginHorizontal: compact ? 2 : spacing.xs }}
       />
       {learnList.slice(0, 3).map((code) => (
-        <View key={`l-${code}`} style={[styles.chip, styles.learningChip]}>
-          <FlagIcon code={code} size={14} />
-          <Text style={[styles.chipText, styles.learningText]}>
-            {compact ? code.toUpperCase() : langName(code)}
+        <View
+          key={`l-${code}`}
+          style={[
+            styles.chip,
+            styles.learningChip,
+            compact && styles.chipCompact,
+          ]}
+        >
+          <FlagIcon code={code} size={flagSize} />
+          <Text
+            style={[
+              styles.chipText,
+              styles.learningText,
+              compact && styles.chipTextCompact,
+            ]}
+          >
+            {code.toUpperCase()}
           </Text>
         </View>
       ))}
@@ -65,6 +82,10 @@ const makeStyles = (colors: ThemeColors) =>
       flexWrap: "wrap",
       gap: 4,
     },
+    rowCompact: {
+      flexWrap: "nowrap",
+      gap: 3,
+    },
     chip: {
       flexDirection: "row",
       alignItems: "center",
@@ -72,6 +93,11 @@ const makeStyles = (colors: ThemeColors) =>
       paddingHorizontal: spacing.sm,
       paddingVertical: 3,
       borderRadius: radius.pill,
+    },
+    chipCompact: {
+      gap: 3,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
     },
     nativeChip: {
       backgroundColor: colors.brandTertiary,
@@ -83,6 +109,9 @@ const makeStyles = (colors: ThemeColors) =>
       fontSize: 12,
       fontFamily: fonts.textBold,
       color: colors.onBrandTertiary,
+    },
+    chipTextCompact: {
+      fontSize: 10,
     },
     learningText: {
       color: colors.onSurfaceSecondary,

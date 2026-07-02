@@ -1,14 +1,15 @@
 # PRD — LinguaConnect (HelloTalk Clone)
 
 ## Original Problem Statement
-"Can you clone hellotalk app" — A language exchange application similar to HelloTalk featuring user profiles, native/target language matching, and messaging capabilities.
+"Can you clone hellotalk app" — A language exchange application similar to HelloTalk featuring user profiles, native/target language matching, and messaging capabilities. User communicates in **Bengali** — always respond in Bengali.
 
-## User Choices (confirmed Feb 2026)
+## User Choices (confirmed)
 - Full HelloTalk feature scope ("All")
 - JWT-based email/password authentication
-- AI-powered translation & grammar correction via **GPT-5.2** (Emergent Universal Key)
+- AI-powered translation via **GPT-5.2** (Emergent Universal Key)
 - **WebSocket** real-time chat
-- HelloTalk-like design (light, friendly sky blue) — design system in `/app/design_guidelines.json`
+- HelloTalk-like design (light sky blue) — design system in `/app/design_guidelines.json`
+- Streak = CONSECUTIVE days (user picked option A)
 
 ## Tech Stack
 - Frontend: Expo (React Native) + Expo Router, Figtree/Nunito fonts, light sky-blue theme
@@ -18,54 +19,62 @@
 ## Architecture
 ### Backend (`/app/backend/`)
 - `server.py` — app, CORS, WS endpoint `/api/ws?token=JWT`, router registration
-- `db.py` — Mongo client + collections + indexes
-- `auth_utils.py` — bcrypt hashing, JWT create/decode, `get_current_user` dependency
-- `models.py` — Pydantic request models + user serializers (uuid string `_id`)
-- `ws_manager.py` — ConnectionManager (user_id → websockets, `send_to_user`)
-- `routes/` — auth.py, users.py, chats.py, moments.py, ai.py
-- `seed.py` — idempotent: 9 demo users + 6 moments (password Demo1234!)
-- `tests/` — test_api.py (8 tests), test_websocket.py (2 tests, added by testing agent)
+- `db.py` — Mongo collections: users, conversations, messages, moments, comments, rooms, room_messages, audio_files, media_files, profile_visits (+indexes)
+- `auth_utils.py` — bcrypt, JWT, get_current_user
+- `models.py` — Pydantic models + user serializers (`_learning_list` compat helper)
+- `routes/` — auth.py (streak logic `touch_streak`), users.py (partners matching, visitors, avatar upload, country/age immutability), chats.py (text/voice/image messages), moments.py (posts, likes, nested reply comments), rooms.py (voice rooms + host moderation), ai.py, audio.py, media.py
+- `seed.py` — idempotent: 9 demo users (multi-language lists, age, interests) + 6 moments (password Demo1234!)
+- `tests/` — test_api.py, test_new_features.py, test_iteration3_features.py, test_websocket.py (WS tests need pytest-asyncio — missing in env)
 
 ### Key API Endpoints (all `/api` prefixed)
-- POST /auth/register, /auth/login; GET /auth/me
-- PUT /users/me; GET /users/partners?language=&search=; GET /users/{id}
-- POST /chats {partner_id}; GET /chats; GET /chats/{id}; GET/POST /chats/{id}/messages; POST /chats/{id}/read
-- GET/POST /moments; GET /moments/{id}; POST /moments/{id}/like; POST /moments/{id}/comments
-- POST /ai/translate {text, target_language}; POST /ai/correct {text, language}
-- WS /api/ws?token= → pushes `{type:"new_message", conversation_id, message, sender}`
+- POST /auth/register, /auth/login (updates streak); GET /auth/me (updates streak)
+- PUT /users/me (country & age SET-ONCE immutable); POST /users/me/avatar {image_base64,mime} → avatar_url=/api/media/{id}
+- GET /users/me/visitors → {count, visitors[+visited_at,is_online]}
+- GET /users/partners?language= (best-match uses learning_languages/teach_languages lists); GET /users/{id} (records profile visit, returns profile_views)
+- POST/GET /chats...; POST /chats/{id}/voice; POST /chats/{id}/image; GET /media/{id}; GET /audio/{id}
+- Moments: GET/POST /moments, /like, POST /moments/{id}/comments {text, reply_to?} → reply_to_author
+- Rooms: CRUD + /join (banned→403), /leave, /end, /hand, /hand/dismiss {user_id} (host), /mic, /role, /kick {user_id} (host, bans), /messages
+- WS relay: call_offer/answer/ice/end/decline, rtc_*; events: new_message, room_update, room_message, room_ended, room_kicked
+
+## DB Schema (uuid string _id)
+- users: email, password_hash, name, bio, country (set-once), age (set-once), avatar_url, native_language, teach_languages[≤2], learning_languages[≤3], learning_language (compat=first learning), proficiency, interests[≤20], streak_count, last_active_date, created_at
+- profile_visits: visitor_id+visited_user_id (unique), visited_at (upsert)
+- messages: type text|voice|image, audio_id/image_id; media_files & audio_files: {_id, data(bytes), mime}
+- rooms: host_id, members{uid:{role,mic_on,hand_raised}}, banned[], is_live
+- comments: moment_id, user_id, text, reply_to?, reply_to_author?
 
 ### Frontend (`/app/frontend/`)
-- `app/index.tsx` — welcome/gate (redirects: onboarding if languages unset, else tabs)
-- `app/auth.tsx` — login/register toggle
-- `app/onboarding.tsx` — 3 steps: native lang, learning lang, proficiency
-- `app/(tabs)/` — connect (partner discovery + filters + search), chats (inbox + WS refresh + unread badges), moments (feed + composer FAB + likes), profile (view/edit + logout)
-- `app/chat/[id].tsx` — real-time chat, per-bubble AI translate, AI grammar check on drafts (correction card with "Use this")
-- `app/user/[id].tsx` — partner profile; `app/moment/[id].tsx` — moment detail + comments
-- `src/` — theme.ts, constants/languages.ts (20 langs), utils/api.ts, utils/time.ts, context/AuthContext.tsx, hooks/use-chat-socket.ts, components/Avatar.tsx + LanguagePair.tsx
+- Tab order: **Chats, Connect, Moments, Voice, Me**
+- `app/onboarding.tsx` — 6 steps: native lang → teach (≤2, skippable) → learning (1-3) → country (one-time) → age (13-120, one-time) → interests (1-20)
+- `app/(tabs)/connect.tsx` — filters: Best Match + user's ≤3 learning languages (NO Everyone)
+- `app/(tabs)/profile.tsx` — HelloTalk-style: avatar photo upload (camera badge → image picker → /users/me/avatar), stats bar (🔥streak | 👁profile views→/visitors | 📅days member), collapsible language edit sections (LayoutAnimation), interests chips, locked country/age (🔒), segmented light/dark toggle (mode-light-btn/mode-dark-btn)
+- `app/visitors.tsx` — profile visitors list (time-ago, tap→profile)
+- `app/user/[id].tsx` — partner profile: stats row, interests chips, age, records visit
+- `app/chat/[id].tsx` — text/voice/image messages, plus-icon media button (chat-media-btn), per-bubble AI translate; grammar-correction UI REMOVED (backend /ai/correct still exists)
+- `app/moment/[id].tsx` — nested comment replies (Reply btn per comment, reply banner, "Replying to X" tag, indented)
+- `app/room/[id].tsx` — host card (room-host-card), Stage requests panel (hand-accept-{id}/hand-dismiss-{id}), host controls per member (room-role-btn/room-kick-btn), flags on all avatars
+- `src/components/Avatar.tsx` — flag badge bottom-LEFT, blue online dot (#0EA5E9) bottom-RIGHT; resolves relative avatar urls via assetUrl()
+- `src/components/LanguagePair.tsx` — short codes (EN⇄ES) everywhere; compact = smaller single-line chips
+- `src/constants/` — languages.ts, countries.ts (COUNTRIES list + countryToCode), interests.ts (32 options, MAX 20)
 
-## DB Schema (uuid string _id everywhere)
-- users: email(unique), password_hash, name, bio, country, avatar_url, native_language, learning_language, proficiency, created_at
-- conversations: participant_ids[2], last_message{}, unread{userId:count}, updated_at
-- messages: conversation_id, sender_id, text, created_at
-- moments: user_id, text, likes[userIds], comment_count, created_at
-- comments: moment_id, user_id, text, created_at
+## What's Implemented (June 2026)
+✅ MVP: auth, onboarding, partner discovery, WS chat, AI translate, moments, profiles, seed
+✅ Voice messages, voice rooms (hand raise/roles), WebRTC voice calls (WEB ONLY — native needs dev build)
+✅ Streak (consecutive days) + profile visitors + stats bar (iteration 2 — tested)
+✅ Image messages in chat (media collection + /api/media)
+✅ Multi-language (native+2 teach / 3 learning), Connect filters, tab reorder
+✅ Nested moment replies, avatar flags+online dots everywhere, profile photo upload, collapsible language sections, interests, set-once country/age, dark-mode segmented toggle, voice room host moderation (kick/ban/hand accept-dismiss)
+✅ Tested: iteration_1/2/3.json all pass (backend 15/15 + full frontend E2E)
 
-## What's Implemented (Feb 2026 — MVP COMPLETE)
-✅ JWT auth (register/login/me) · onboarding · partner discovery with language matching/filters/search · real-time WebSocket 1-on-1 chat with unread counts · AI translate (per message bubble) · AI grammar correction (draft check) · Moments feed (post/like/comment) · profile view/edit · logout · seed data
-✅ Tested: 10/10 backend pytest + full frontend E2E by testing agent (iteration_1.json) — all pass
-
-## Backlog (P1/P2 — not yet built)
-- P1: Voice messages / audio recording in chat
-- P1: Image upload in chat & moments (needs object storage playbook)
-- P1: Avatar upload for registered users (currently initials fallback; seeded users use pravatar URLs)
-- P2: Typing indicators & online presence (WS infra ready)
-- P2: Message corrections inline (HelloTalk-style strike-through correction of partner messages)
-- P2: Followers/following on Moments, hashtags
-- P2: Push notifications (ONLY if user requests)
-- P2: Streaks / learning stats gamification
+## Backlog / Known Issues
+- LOW: auth-hydration race on hard reload deep-links (first API call 401 before token restore) — carry-over
+- LOW: RN deprecation `props.pointerEvents` warnings
+- env: pytest-asyncio missing → 2 WS tests skipped
+- P2: typing indicators, inline message corrections, followers/hashtags
+- Refactor: profile.tsx ~950 lines — split edit sections into components
 
 ## Notes for Future Agents
-- Emergent LLM key in backend/.env; one transient "budget exceeded" error observed then self-resolved
-- Metro runs in CI mode — restart expo via supervisorctl after installing frontend deps
+- Fork lost .env files once — recreated: backend/.env (MONGO_URL, DB_NAME=linguaconnect, JWT_SECRET, CORS_ORIGINS, EMERGENT_LLM_KEY), frontend/.env (EXPO_PUBLIC_BACKEND_URL + EXPO_PACKAGER_* = preview URL)
 - Test credentials: /app/memory/test_credentials.md (demo@demo.com / Demo1234!)
-- shadow uses RN 0.81 `boxShadow` string (cross-platform); tab buttons have testIDs `tab-connect` etc.
+- User writes in Bengali — reply in Bengali
+- app.json has photo/mic permissions (iOS infoPlist + Android permissions)
