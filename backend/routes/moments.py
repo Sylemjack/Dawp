@@ -133,11 +133,16 @@ async def get_moment(moment_id: str, current_user: CurrentUser):
     comment_docs = (
         await comments_col.find({"moment_id": moment_id}).sort("created_at", 1).to_list(200)
     )
-    comments = []
-    for c in comment_docs:
-        author = await users_col.find_one({"_id": c["user_id"]})
-        comments.append(comment_public(c, author))
-    moment["comments"] = comments
+    author_ids = list({c["user_id"] for c in comment_docs})
+    authors = (
+        await users_col.find({"_id": {"$in": author_ids}}).to_list(len(author_ids))
+        if author_ids
+        else []
+    )
+    author_map = {u["_id"]: u for u in authors}
+    moment["comments"] = [
+        comment_public(c, author_map.get(c["user_id"])) for c in comment_docs
+    ]
     return moment
 
 

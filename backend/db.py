@@ -1,3 +1,4 @@
+import logging
 import os
 from pathlib import Path
 
@@ -6,6 +7,8 @@ from motor.motor_asyncio import AsyncIOMotorClient
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
+
+logger = logging.getLogger(__name__)
 
 client = AsyncIOMotorClient(os.environ["MONGO_URL"])
 db = client[os.environ["DB_NAME"]]
@@ -27,21 +30,27 @@ market_config_col = db["market_config"]
 
 
 async def ensure_indexes():
-    await users_col.create_index("email", unique=True)
-    await users_col.create_index("username", unique=True, sparse=True)
-    await messages_col.create_index([("conversation_id", 1), ("created_at", 1)])
-    await conversations_col.create_index("participant_ids")
-    await moments_col.create_index([("created_at", -1)])
-    await comments_col.create_index([("moment_id", 1), ("created_at", 1)])
-    await rooms_col.create_index([("is_live", 1), ("created_at", -1)])
-    await room_messages_col.create_index([("room_id", 1), ("created_at", 1)])
-    await profile_visits_col.create_index(
-        [("visitor_id", 1), ("visited_user_id", 1)], unique=True
-    )
-    await profile_visits_col.create_index([("visited_user_id", 1), ("visited_at", -1)])
-    await notifications_col.create_index([("user_id", 1), ("created_at", -1)])
-    await notifications_col.create_index([("user_id", 1), ("read", 1)])
-    await follows_col.create_index(
-        [("follower_id", 1), ("following_id", 1)], unique=True
-    )
-    await follows_col.create_index([("following_id", 1)])
+    """Idempotent index creation. Each index is attempted independently so a
+    transient connection error (e.g. Atlas handshake EOF) never crashes startup —
+    missing indexes are simply created on the next boot."""
+    specs = [
+        (users_col, "email", {"unique": True}),
+        (users_col, "username", {"unique": True, "sparse": True}),
+        (messages_col, [("conversation_id", 1), ("created_at", 1)], {}),
+        (conversations_col, "participant_ids", {}),
+        (moments_col, [("created_at", -1)], {}),
+        (comments_col, [("moment_id", 1), ("created_at", 1)], {}),
+        (rooms_col, [("is_live", 1), ("created_at", -1)], {}),
+        (room_messages_col, [("room_id", 1), ("created_at", 1)], {}),
+        (profile_visits_col, [("visitor_id", 1), ("visited_user_id", 1)], {"unique": True}),
+        (profile_visits_col, [("visited_user_id", 1), ("visited_at", -1)], {}),
+        (notifications_col, [("user_id", 1), ("created_at", -1)], {}),
+        (notifications_col, [("user_id", 1), ("read", 1)], {}),
+        (follows_col, [("follower_id", 1), ("following_id", 1)], {"unique": True}),
+        (follows_col, [("following_id", 1)], {}),
+    ]
+    for col, keys, opts in specs:
+        try:
+            await col.create_index(keys, **opts)
+        except Exception as e:
+            logger.warning("Index creation skipped for %s %s: %s", col.name, keys, e)
