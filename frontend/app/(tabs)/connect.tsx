@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import dayjs from "dayjs";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
@@ -16,15 +17,22 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { Avatar } from "@/src/components/Avatar";
-import { GenderBadge, VipBadge } from "@/src/components/Badges";
+import { VipBadge } from "@/src/components/Badges";
 import { FlagIcon } from "@/src/components/FlagIcon";
-import { LanguagePair } from "@/src/components/LanguagePair";
 import { countryToCode } from "@/src/constants/countries";
-import { LANGUAGES, langName } from "@/src/constants/languages";
+import { LANGUAGES, PROFICIENCY_LEVELS, langName } from "@/src/constants/languages";
 import { useAuth } from "@/src/context/AuthContext";
 import { useTheme } from "@/src/context/ThemeContext";
-import { fonts, radius, shadow, spacing, ThemeColors } from "@/src/theme";
+import { fonts, radius, spacing, ThemeColors } from "@/src/theme";
 import { api, Conversation, User } from "@/src/utils/api";
+
+const CATEGORIES = [
+  { key: "all", label: "All" },
+  { key: "serious", label: "Serious Learners" },
+  { key: "nearby", label: "Nearby" },
+  { key: "city", label: "City" },
+  { key: "gender", label: "Gender" },
+];
 
 export default function Connect() {
   const { user, setUser } = useAuth();
@@ -35,7 +43,10 @@ export default function Connect() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<string>("match");
-  const [scrolled, setScrolled] = useState(false);
+  const [category, setCategory] = useState<string>("all");
+  const [addLangOpen, setAddLangOpen] = useState(false);
+  const [addingLang, setAddingLang] = useState(false);
+  const [vipBusy, setVipBusy] = useState(false);
 
   const load = useCallback(async () => {
     setError(null);
@@ -70,10 +81,6 @@ export default function Connect() {
       );
     }
   };
-
-  const [addLangOpen, setAddLangOpen] = useState(false);
-  const [addingLang, setAddingLang] = useState(false);
-  const [vipBusy, setVipBusy] = useState(false);
 
   const myLearning = (
     user?.learning_languages?.length
@@ -121,41 +128,202 @@ export default function Connect() {
     }
   };
 
+  const ProfDots = ({ level }: { level?: string | null }) => {
+    const idx = level ? PROFICIENCY_LEVELS.indexOf(level) : -1;
+    const filled = idx >= 0 ? idx + 1 : 1;
+    return (
+      <View style={styles.dotsRow}>
+        {[0, 1, 2, 3, 4].map((i) => (
+          <View key={i} style={[styles.dot, i < filled && styles.dotFilled]} />
+        ))}
+      </View>
+    );
+  };
+
+  const renderCard = ({ item }: { item: User }) => {
+    const learning = (
+      item.learning_languages?.length
+        ? item.learning_languages
+        : item.learning_language
+          ? [item.learning_language]
+          : []
+    ).slice(0, 3);
+
+    const isNew =
+      item.created_at && dayjs().diff(dayjs(item.created_at), "day") < 7;
+    const tags: { label: string; kind: "new" | "active" | "neutral" }[] = [];
+    if (isNew) tags.push({ label: "New", kind: "new" });
+    if (item.is_online) tags.push({ label: "Very active", kind: "active" });
+    if (item.mbti) tags.push({ label: item.mbti, kind: "neutral" });
+    if (
+      user?.age &&
+      item.age &&
+      Math.abs(user.age - item.age) <= 5 &&
+      tags.length < 3
+    )
+      tags.push({ label: "Similar age range", kind: "active" });
+
+    const subtitle =
+      item.bio?.trim() ||
+      "Say hi first—don't miss the chance to meet a new language partner!";
+
+    return (
+      <Pressable
+        testID={`partner-card-${item.id}`}
+        style={styles.card}
+        onPress={() => router.push(`/user/${item.id}`)}
+      >
+        <View style={styles.avatarCol}>
+          <Avatar
+            name={item.name}
+            url={item.avatar_url}
+            size={60}
+            flagCode={countryToCode(item.country)}
+            online={item.is_online}
+            frame={item.active_frame}
+          />
+          <View style={styles.activeRow}>
+            <View
+              style={[
+                styles.activeDot,
+                { backgroundColor: item.is_online ? "#22C55E" : colors.borderStrong },
+              ]}
+            />
+            <Text style={styles.activeText} numberOfLines={1}>
+              {item.is_online ? "Active now" : "Recently"}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.cardBody}>
+          <View style={styles.cardTop}>
+            <Text style={styles.cardName} numberOfLines={1}>
+              {item.name}
+            </Text>
+            {item.is_vip && <VipBadge small tier={item.vip_tier} />}
+          </View>
+
+          <View style={styles.langRow}>
+            <View style={styles.langItem}>
+              <Text style={styles.langCode}>
+                {(item.native_language || "").toUpperCase()}
+              </Text>
+              <View style={styles.langBar} />
+            </View>
+            <Ionicons
+              name="swap-horizontal"
+              size={15}
+              color={colors.onSurfaceSecondary}
+              style={{ marginHorizontal: 6 }}
+            />
+            {learning.map((c, i) => (
+              <View key={c} style={[styles.langItem, { marginRight: spacing.sm }]}>
+                <Text style={styles.langCode}>{c.toUpperCase()}</Text>
+                {i === 0 ? <ProfDots level={item.proficiency} /> : null}
+              </View>
+            ))}
+          </View>
+
+          <Text style={styles.cardSub} numberOfLines={2}>
+            {subtitle}
+          </Text>
+
+          {tags.length > 0 && (
+            <View style={styles.tagRow}>
+              {tags.map((t) => (
+                <View
+                  key={t.label}
+                  style={[
+                    styles.tag,
+                    t.kind === "new" && styles.tagNew,
+                    t.kind === "active" && styles.tagActive,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.tagText,
+                      t.kind === "new" && styles.tagTextNew,
+                      t.kind === "active" && styles.tagTextActive,
+                    ]}
+                  >
+                    {t.label}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+
+        <Pressable
+          testID={`partner-message-btn-${item.id}`}
+          style={styles.waveBtn}
+          onPress={() => openChat(item)}
+        >
+          <Ionicons name="hand-left" size={22} color="#FFFFFF" />
+        </Pressable>
+      </Pressable>
+    );
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={["top"]} testID="connect-screen">
+      {/* Header */}
       <View style={styles.header}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.headerTitle}>Connect</Text>
-          <Text style={styles.headerSub}>
-            {myLearning.length
-              ? `Partners for your ${myLearning.map((c) => langName(c)).join(", ")} journey`
-              : "Find language partners"}
-          </Text>
-        </View>
-        {scrolled && (
+        <Pressable
+          testID="connect-vip-badge"
+          style={styles.vipChip}
+          onPress={() => router.push("/market")}
+        >
+          <View style={styles.vipUpgradeTag}>
+            <Text style={styles.vipUpgradeText}>Upgrade</Text>
+          </View>
+          <Text style={styles.vipChipText}>VIP</Text>
+        </Pressable>
+        <Text style={styles.headerTitle}>Find Partners</Text>
+        <View style={styles.headerActions}>
           <Pressable
-            testID="connect-search-topbar-btn"
-            style={styles.searchIconBtn}
+            testID="connect-boost-btn"
+            style={styles.headerIconBtn}
+            onPress={() => router.push("/market")}
+          >
+            <Ionicons name="flash" size={22} color="#EC4899" />
+          </Pressable>
+          <Pressable
+            testID="connect-filter-btn"
+            style={styles.headerIconBtn}
             onPress={() => router.push("/search")}
           >
-            <Ionicons name="search" size={20} color={colors.brand} />
+            <Ionicons name="options" size={22} color={colors.onSurface} />
           </Pressable>
-        )}
+        </View>
       </View>
 
-      {!scrolled && (
-        <Pressable
-          testID="connect-search-bar"
-          style={styles.searchBox}
-          onPress={() => router.push("/search")}
+      {/* Category tabs */}
+      <View>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.catRow}
         >
-          <Ionicons name="search" size={18} color={colors.onSurfaceSecondary} />
-          <Text style={styles.searchPlaceholder}>
-            Search partners by name, language...
-          </Text>
-        </Pressable>
-      )}
+          {CATEGORIES.map((c) => {
+            const active = category === c.key;
+            return (
+              <Pressable
+                key={c.key}
+                testID={`connect-cat-${c.key}`}
+                onPress={() => setCategory(c.key)}
+                style={[styles.catItem, active && styles.catItemActive]}
+              >
+                <Text style={[styles.catText, active && styles.catTextActive]}>
+                  {c.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      </View>
 
+      {/* Language chips */}
       <View>
         <ScrollView
           horizontal
@@ -173,10 +341,7 @@ export default function Connect() {
               >
                 {chip.key !== "match" && <FlagIcon code={chip.key} size={14} />}
                 <Text
-                  style={[
-                    styles.filterText,
-                    active && styles.filterTextActive,
-                  ]}
+                  style={[styles.filterText, active && styles.filterTextActive]}
                 >
                   {chip.label}
                 </Text>
@@ -189,7 +354,7 @@ export default function Connect() {
               onPress={() => setAddLangOpen(true)}
               style={[styles.filterChip, styles.addChip]}
             >
-              <Ionicons name="add" size={16} color={colors.brand} />
+              <Ionicons name="add" size={18} color={colors.brand} />
             </Pressable>
           )}
         </ScrollView>
@@ -211,72 +376,20 @@ export default function Connect() {
           data={partners}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}
-          onScroll={(e) => setScrolled(e.nativeEvent.contentOffset.y > 40)}
-          scrollEventThrottle={16}
+          ItemSeparatorComponent={() => <View style={styles.sep} />}
           ListEmptyComponent={
             <View style={styles.center}>
-              <Ionicons
-                name="earth-outline"
-                size={56}
-                color={colors.borderStrong}
-              />
+              <Ionicons name="earth-outline" size={56} color={colors.borderStrong} />
               <Text style={styles.emptyText}>
                 No partners found. Try a different filter!
               </Text>
             </View>
           }
-          renderItem={({ item }) => (
-            <Pressable
-              testID={`partner-card-${item.id}`}
-              style={styles.card}
-              onPress={() => router.push(`/user/${item.id}`)}
-            >
-              <Avatar
-                name={item.name}
-                url={item.avatar_url}
-                size={56}
-                flagCode={countryToCode(item.country)}
-                online={item.is_online}
-                frame={item.active_frame}
-              />
-              <View style={styles.cardBody}>
-                <View style={styles.cardTop}>
-                  <Text style={styles.cardName} numberOfLines={1}>
-                    {item.name}
-                  </Text>
-                  <GenderBadge gender={item.gender} size={11} />
-                  {item.is_vip && <VipBadge small tier={item.vip_tier} />}
-                </View>
-                <LanguagePair
-                  native={item.native_language}
-                  teach={item.teach_languages}
-                  learning={
-                    item.learning_languages?.length
-                      ? item.learning_languages
-                      : item.learning_language
-                  }
-                  compact
-                />
-                {item.bio ? (
-                  <Text style={styles.cardBio} numberOfLines={2}>
-                    {item.bio}
-                  </Text>
-                ) : null}
-              </View>
-              <View style={styles.cardRight}>
-                <Pressable
-                  testID={`partner-message-btn-${item.id}`}
-                  style={styles.msgBtn}
-                  onPress={() => openChat(item)}
-                >
-                  <Ionicons name="chatbubble" size={18} color={colors.onBrand} />
-                </Pressable>
-              </View>
-            </Pressable>
-          )}
+          renderItem={renderCard}
         />
       )}
 
+      {/* Add language / VIP modal */}
       <Modal
         visible={addLangOpen}
         animationType="slide"
@@ -313,9 +426,7 @@ export default function Connect() {
                   ) : (
                     <>
                       <Ionicons name="diamond" size={18} color="#FFF" />
-                      <Text style={styles.vipBtnText}>
-                        Upgrade to VIP — Free
-                      </Text>
+                      <Text style={styles.vipBtnText}>Upgrade to VIP — Free</Text>
                     </>
                   )}
                 </Pressable>
@@ -352,228 +463,321 @@ export default function Connect() {
 
 const makeStyles = (colors: ThemeColors) =>
   StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.surfaceSecondary,
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.md,
-  },
-  headerTitle: {
-    fontFamily: fonts.display,
-    fontSize: 28,
-    color: colors.onSurface,
-  },
-  headerSub: {
-    fontFamily: fonts.text,
-    fontSize: 14,
-    color: colors.onSurfaceSecondary,
-    marginTop: 2,
-  },
-  searchBox: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    backgroundColor: colors.surface,
-    marginHorizontal: spacing.xl,
-    marginTop: spacing.lg,
-    borderRadius: radius.pill,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-  },
-  searchIconBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.brandTertiary,
-    alignItems: "center",
-    justifyContent: "center",
-    marginLeft: spacing.sm,
-  },
-  searchPlaceholder: {
-    fontFamily: fonts.text,
-    fontSize: 14,
-    color: colors.onSurfaceSecondary,
-  },
-  searchInput: {
-    flex: 1,
-    fontFamily: fonts.text,
-    fontSize: 14,
-    color: colors.onSurface,
-    paddingVertical: spacing.xs,
-  },
-  filterRow: {
-    gap: spacing.sm,
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.md,
-  },
-  filterChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.pill,
-    backgroundColor: colors.surface,
-  },
-  addChip: {
-    paddingHorizontal: spacing.md,
-    borderWidth: 1.5,
-    borderColor: colors.brand,
-    borderStyle: "dashed",
-  },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.4)",
-    justifyContent: "flex-end",
-  },
-  modalCard: {
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: radius.lg,
-    borderTopRightRadius: radius.lg,
-    padding: spacing.xl,
-    gap: spacing.lg,
-    paddingBottom: spacing.xxl,
-  },
-  modalHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  modalTitle: {
-    fontFamily: fonts.display,
-    fontSize: 19,
-    color: colors.onSurface,
-  },
-  vipUpsellText: {
-    fontFamily: fonts.text,
-    fontSize: 14,
-    lineHeight: 21,
-    color: colors.onSurfaceTertiary,
-  },
-  vipBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.sm,
-    backgroundColor: "#F59E0B",
-    borderRadius: radius.pill,
-    paddingVertical: spacing.lg,
-  },
-  vipBtnText: {
-    fontFamily: fonts.textBold,
-    fontSize: 15,
-    color: "#FFFFFF",
-  },
-  langGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacing.sm,
-  },
-  langOption: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.pill,
-    backgroundColor: colors.surfaceSecondary,
-  },
-  langOptionText: {
-    fontFamily: fonts.textSemi,
-    fontSize: 13,
-    color: colors.onSurfaceTertiary,
-  },
-  filterChipActive: {
-    backgroundColor: colors.brand,
-  },
-  filterText: {
-    fontFamily: fonts.textBold,
-    fontSize: 13,
-    color: colors.onSurfaceSecondary,
-  },
-  filterTextActive: {
-    color: colors.onBrand,
-  },
-  list: {
-    padding: spacing.lg,
-    paddingBottom: spacing.xxxl,
-    gap: spacing.md,
-  },
-  card: {
-    flexDirection: "row",
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    padding: spacing.lg,
-    gap: spacing.md,
-    alignItems: "center",
-    ...shadow.card,
-  },
-  cardBody: {
-    flex: 1,
-    gap: spacing.xs + 2,
-  },
-  cardTop: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-  },
-  cardName: {
-    fontFamily: fonts.displaySemi,
-    fontSize: 16,
-    color: colors.onSurface,
-    flexShrink: 1,
-  },
-  cardRight: {
-    alignItems: "center",
-    gap: spacing.xs,
-  },
-  onlineDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: "#22c55e",
-    borderWidth: 2,
-    borderColor: colors.surface,
-  },
-  cardBio: {
-    fontFamily: fonts.text,
-    fontSize: 13,
-    color: colors.onSurfaceSecondary,
-    lineHeight: 18,
-  },
-  msgBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: radius.pill,
-    backgroundColor: colors.brand,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  center: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.md,
-    padding: spacing.xl,
-  },
-  emptyText: {
-    fontFamily: fonts.textSemi,
-    fontSize: 14,
-    color: colors.onSurfaceSecondary,
-    textAlign: "center",
-  },
-  retryBtn: {
-    backgroundColor: colors.brand,
-    borderRadius: radius.pill,
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.md,
-  },
-  retryText: {
-    color: colors.onBrand,
-    fontFamily: fonts.textBold,
-  },
-});
+    container: {
+      flex: 1,
+      backgroundColor: colors.surface,
+    },
+    header: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: spacing.lg,
+      paddingTop: spacing.sm,
+      paddingBottom: spacing.sm,
+    },
+    vipChip: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 5,
+      backgroundColor: "#F59E0B",
+      borderRadius: radius.pill,
+      paddingHorizontal: spacing.sm + 2,
+      paddingVertical: 5,
+    },
+    vipUpgradeTag: {
+      backgroundColor: "#EC4899",
+      borderRadius: radius.pill,
+      paddingHorizontal: 6,
+      paddingVertical: 1,
+    },
+    vipUpgradeText: {
+      fontFamily: fonts.textBold,
+      fontSize: 9,
+      color: "#FFFFFF",
+    },
+    vipChipText: {
+      fontFamily: fonts.textBold,
+      fontSize: 14,
+      color: "#FFFFFF",
+      fontStyle: "italic",
+    },
+    headerTitle: {
+      fontFamily: fonts.display,
+      fontSize: 20,
+      color: colors.onSurface,
+    },
+    headerActions: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing.xs,
+    },
+    headerIconBtn: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    catRow: {
+      gap: spacing.lg,
+      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.sm,
+      alignItems: "center",
+    },
+    catItem: {
+      paddingHorizontal: spacing.md,
+      paddingVertical: 6,
+      borderRadius: radius.pill,
+    },
+    catItemActive: {
+      backgroundColor: colors.surfaceSecondary,
+    },
+    catText: {
+      fontFamily: fonts.textSemi,
+      fontSize: 16,
+      color: colors.onSurfaceSecondary,
+    },
+    catTextActive: {
+      fontFamily: fonts.displaySemi,
+      color: colors.onSurface,
+    },
+    filterRow: {
+      gap: spacing.sm,
+      paddingHorizontal: spacing.lg,
+      paddingBottom: spacing.sm,
+    },
+    filterChip: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      paddingHorizontal: spacing.xl,
+      paddingVertical: spacing.sm,
+      borderRadius: radius.pill,
+      backgroundColor: colors.surfaceSecondary,
+    },
+    filterChipActive: {
+      backgroundColor: colors.brandTertiary,
+    },
+    filterText: {
+      fontFamily: fonts.textBold,
+      fontSize: 14,
+      color: colors.onSurfaceSecondary,
+    },
+    filterTextActive: {
+      color: colors.brand,
+    },
+    addChip: {
+      paddingHorizontal: spacing.xl,
+    },
+    list: {
+      paddingHorizontal: spacing.lg,
+      paddingTop: spacing.sm,
+      paddingBottom: spacing.xxxl,
+    },
+    sep: {
+      height: StyleSheet.hairlineWidth,
+      backgroundColor: colors.divider,
+      marginVertical: spacing.lg,
+    },
+    card: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      gap: spacing.md,
+    },
+    avatarCol: {
+      alignItems: "center",
+      width: 66,
+      gap: 4,
+    },
+    activeRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 3,
+    },
+    activeDot: {
+      width: 7,
+      height: 7,
+      borderRadius: 3.5,
+    },
+    activeText: {
+      fontFamily: fonts.text,
+      fontSize: 10,
+      color: colors.onSurfaceSecondary,
+    },
+    cardBody: {
+      flex: 1,
+      gap: 5,
+    },
+    cardTop: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing.sm,
+    },
+    cardName: {
+      fontFamily: fonts.display,
+      fontSize: 20,
+      color: colors.onSurface,
+      flexShrink: 1,
+    },
+    langRow: {
+      flexDirection: "row",
+      alignItems: "center",
+    },
+    langItem: {
+      alignItems: "flex-start",
+    },
+    langCode: {
+      fontFamily: fonts.textBold,
+      fontSize: 13,
+      color: colors.onSurface,
+    },
+    langBar: {
+      width: "100%",
+      height: 2.5,
+      borderRadius: 2,
+      backgroundColor: colors.success,
+      marginTop: 2,
+    },
+    dotsRow: {
+      flexDirection: "row",
+      gap: 2,
+      marginTop: 3,
+    },
+    dot: {
+      width: 4,
+      height: 4,
+      borderRadius: 2,
+      backgroundColor: colors.surfaceTertiary,
+    },
+    dotFilled: {
+      backgroundColor: colors.brand,
+    },
+    cardSub: {
+      fontFamily: fonts.text,
+      fontSize: 14,
+      lineHeight: 20,
+      color: colors.onSurfaceSecondary,
+    },
+    tagRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: spacing.sm,
+      marginTop: 2,
+    },
+    tag: {
+      backgroundColor: colors.surfaceSecondary,
+      borderRadius: radius.sm,
+      paddingHorizontal: spacing.sm + 2,
+      paddingVertical: 3,
+    },
+    tagNew: {
+      backgroundColor: "#CCFBF1",
+    },
+    tagActive: {
+      backgroundColor: "#FFEDD5",
+    },
+    tagText: {
+      fontFamily: fonts.textSemi,
+      fontSize: 12,
+      color: colors.onSurfaceSecondary,
+    },
+    tagTextNew: {
+      color: "#0D9488",
+    },
+    tagTextActive: {
+      color: "#EA580C",
+    },
+    waveBtn: {
+      width: 64,
+      height: 44,
+      borderRadius: radius.pill,
+      backgroundColor: "#6D5AE8",
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    modalBackdrop: {
+      flex: 1,
+      backgroundColor: "rgba(0,0,0,0.4)",
+      justifyContent: "flex-end",
+    },
+    modalCard: {
+      backgroundColor: colors.surface,
+      borderTopLeftRadius: radius.lg,
+      borderTopRightRadius: radius.lg,
+      padding: spacing.xl,
+      gap: spacing.lg,
+      paddingBottom: spacing.xxl,
+    },
+    modalHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+    },
+    modalTitle: {
+      fontFamily: fonts.display,
+      fontSize: 19,
+      color: colors.onSurface,
+    },
+    vipUpsellText: {
+      fontFamily: fonts.text,
+      fontSize: 14,
+      lineHeight: 21,
+      color: colors.onSurfaceTertiary,
+    },
+    vipBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: spacing.sm,
+      backgroundColor: "#F59E0B",
+      borderRadius: radius.pill,
+      paddingVertical: spacing.lg,
+    },
+    vipBtnText: {
+      fontFamily: fonts.textBold,
+      fontSize: 15,
+      color: "#FFFFFF",
+    },
+    langGrid: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: spacing.sm,
+    },
+    langOption: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+      borderRadius: radius.pill,
+      backgroundColor: colors.surfaceSecondary,
+    },
+    langOptionText: {
+      fontFamily: fonts.textSemi,
+      fontSize: 13,
+      color: colors.onSurfaceTertiary,
+    },
+    center: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      gap: spacing.md,
+      padding: spacing.xl,
+    },
+    emptyText: {
+      fontFamily: fonts.textSemi,
+      fontSize: 14,
+      color: colors.onSurfaceSecondary,
+      textAlign: "center",
+    },
+    retryBtn: {
+      backgroundColor: colors.brand,
+      borderRadius: radius.pill,
+      paddingHorizontal: spacing.xl,
+      paddingVertical: spacing.md,
+    },
+    retryText: {
+      color: colors.onBrand,
+      fontFamily: fonts.textBold,
+    },
+  });

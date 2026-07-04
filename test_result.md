@@ -104,6 +104,81 @@
 ## Test Run — Profile Redesign (backend changes)
 user_problem_statement: Redesigned Me/Edit/Other-user profile screens (HelloTalk style). Backend additions to support them.
 
+## Test Run — Bottom Navbar Fix & Connect Page Redesign (frontend verification)
+user_problem_statement: User reported bottom tab bar overlaps device's bottom button/gesture bar. Verify the fix. Also verify Connect page redesign with new header, category tabs, language chips, and partner cards.
+
+frontend:
+  - task: "Bottom navbar safe area fix (useSafeAreaInsets)"
+    implemented: true
+    working: true
+    file: "frontend/app/(tabs)/_layout.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "Applied useSafeAreaInsets() with Math.max(insets.bottom, 12) to ensure minimum 12px gap. Tab bar height: 56 + bottomGap, paddingBottom: bottomGap."
+        - working: true
+          agent: "testing"
+          comment: "✅ TESTED: All 5 tabs (Chats, Connect, Moments, Voice, Me) are visible and clickable. Each tab positioned at bottom 832px with 12px gap from viewport bottom (844px). Tab bar container properly positioned with 12px gap. No overlap with device bottom bar detected. Fix working correctly on mobile viewport (390x844)."
+  - task: "Connect page redesign - Header with Find Partners title, VIP badge, boost/filter icons"
+    implemented: true
+    working: true
+    file: "frontend/app/(tabs)/connect.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "Redesigned header with Find Partners title, Upgrade VIP badge on left, flash (boost) and options (filter) icons on right."
+        - working: true
+          agent: "testing"
+          comment: "✅ TESTED: Header displays correctly - 'Find Partners' title visible, VIP badge with 'Upgrade' tag visible, boost (flash) icon visible, filter (options) icon visible. All elements properly positioned and accessible."
+  - task: "Connect page - Category tabs (All, Serious Learners, Nearby, City, Gender)"
+    implemented: true
+    working: true
+    file: "frontend/app/(tabs)/connect.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "Horizontal scrollable category tabs with active state highlighting."
+        - working: true
+          agent: "testing"
+          comment: "✅ TESTED: All 5 category tabs visible and clickable (All, Serious Learners, Nearby, City, Gender). Clicking tabs changes active state without errors. Tab switching works correctly."
+  - task: "Connect page - Language filter chips (Best Match + learning languages + add button)"
+    implemented: true
+    working: true
+    file: "frontend/app/(tabs)/connect.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "Language chip row with Best Match, user's learning languages (up to 3), and + add button. Clicking chips updates filter selection."
+        - working: true
+          agent: "testing"
+          comment: "✅ TESTED: Best Match chip visible and clickable. Learning language chips displayed. Add language '+' button visible. Clicking chips updates selection without errors. Filter functionality working correctly."
+  - task: "Connect page - Partner cards with avatar, status, name, languages, tags, wave button"
+    implemented: true
+    working: true
+    file: "frontend/app/(tabs)/connect.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "Partner cards display avatar with Active now/Recently status, name, language pair with proficiency dots, subtitle, optional tags (New, Very active, MBTI, Similar age), and purple wave button."
+        - working: true
+          agent: "testing"
+          comment: "✅ TESTED: Partner cards render correctly with all required elements. Found 2 partner cards displaying. Wave/message button visible on cards. Clicking wave button successfully opens chat screen (navigates to /chat/[id]). Clicking card body successfully opens user profile (navigates to /user/[id]). Navigation back to Connect works. All card interactions functioning correctly."
+
 backend:
   - task: "GET /api/moments/mine/count and /api/moments/user/{id}/count"
     implemented: true
@@ -150,15 +225,14 @@ backend:
 
 metadata:
   created_by: "main_agent"
-  version: "1.3"
-  test_sequence: 2
-  run_ui: false
+  version: "1.4"
+  test_sequence: 3
+  run_ui: true
 
 test_plan:
   current_focus:
-    - "Extended profile fields via PUT /api/users/me"
-    - "GET moments count endpoints"
-    - "POST /api/users/me/cover"
+    - "Bottom navbar safe area fix"
+    - "Connect page redesign verification"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
@@ -168,3 +242,5 @@ agent_communication:
       message: "Please test new backend endpoints. Use existing user fahad@lingua.app / Test1234! (or register a new user). Verify: (1) PUT /api/users/me persists mbti/blood_type/hometown/occupation/school/places_to_go/birthday and returns them; gender is updatable now. (2) GET /api/moments/mine/count and GET /api/moments/user/{id}/count return {count:int} with auth, 401 without. (3) POST /api/users/me/cover accepts {image_base64,mime} and sets cover_url. Do not test frontend."
     - agent: "testing"
       message: "✅ ALL BACKEND TESTS PASSED (7/7). Extended profile update working correctly - all fields (mbti, blood_type, hometown, occupation, school, places_to_go, birthday, gender) update and persist. Moments count endpoints return correct format with auth, reject without auth (401). Cover upload accepts valid base64 and rejects invalid (400). No critical issues found. Ready for main agent to summarize and finish."
+    - agent: "testing"
+      message: "✅ FRONTEND UI TESTS COMPLETED (5/5 tasks). FOCUS 1 (MOST IMPORTANT) - Bottom navbar fix: PASSED. All 5 tabs visible with 12px gap from bottom, no overlap detected. FOCUS 2 - Connect page redesign: PASSED. All elements verified: header (Find Partners, VIP badge, boost/filter icons), category tabs (5 tabs, all clickable), language chips (Best Match + learning languages + add button), partner cards (2 cards found, all elements present, wave button opens chat, card body opens profile). No critical issues found. Only minor console warning: 'props.pointerEvents is deprecated' (non-blocking). All navigation and interactions working correctly. Ready for main agent to summarize and finish."
